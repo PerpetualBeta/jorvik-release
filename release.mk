@@ -504,8 +504,15 @@ build:
 	# Resources: copy everything from Resources/ if it exists (Daily News
 	# broke without this). Excludes the .iconset intermediate dir.
 	if [[ -d Resources ]]; then
-		find Resources -mindepth 1 -maxdepth 1 ! -name "*.iconset" \
-			-exec cp -R {} "$(BUILT_BUNDLE)/Contents/Resources/" \;
+		# Mirror each top-level Resources item into the bundle, removing the bundle's
+		# copy FIRST so a renamed or deleted asset can't linger from an earlier build
+		# (a stale sample once caused an intermittent missing sound). Generated files
+		# like the icon and Assets.car live outside Resources/ and are left untouched.
+		find Resources -mindepth 1 -maxdepth 1 ! -name "*.iconset" -print0 | while IFS= read -r -d '' item; do
+			dest="$(BUILT_BUNDLE)/Contents/Resources/$$(basename "$$item")"
+			rm -rf "$$dest"
+			cp -R "$$item" "$$dest"
+		done
 	fi
 	# Two project layouts exist for the icon:
 	#   (a) icon under Resources/ (Reverie, Daily News) — handled above
@@ -638,8 +645,13 @@ build:
 	fi
 	cp "$(INFO_PLIST)" "$(BUILT_BUNDLE)/Contents/Info.plist"
 	if [[ -d Resources ]]; then
-		find Resources -mindepth 1 -maxdepth 1 ! -name "*.iconset" ! -name "Info.plist" \
-			-exec cp -R {} "$(BUILT_BUNDLE)/Contents/Resources/" \;
+		# Mirror each Resources item, pruning the bundle's stale copy first (see the
+		# swiftc build path above for the rationale). Generated files are left alone.
+		find Resources -mindepth 1 -maxdepth 1 ! -name "*.iconset" ! -name "Info.plist" -print0 | while IFS= read -r -d '' item; do
+			dest="$(BUILT_BUNDLE)/Contents/Resources/$$(basename "$$item")"
+			rm -rf "$$dest"
+			cp -R "$$item" "$$dest"
+		done
 	fi
 	# Project-root icon fallback (see swiftc block for rationale).
 	if [[ -f "$(ICON_FILE)" && ! -f "$(BUILT_BUNDLE)/Contents/Resources/$(ICON_FILE)" ]]; then
