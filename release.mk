@@ -480,13 +480,24 @@ else
 SWIFTC_OUTPUT_FLAGS :=
 endif
 
+# Compile-time defines present in local / ad-hoc dev builds but STRIPPED from
+# signed release builds. An app opts in by listing define names in DEV_ONLY_DEFINES
+# (empty by default → no effect for apps that don't set it). The ad-hoc SIGN_ID "-"
+# is the reliable "this is not a signed release" signal (the same test the sign
+# step uses), so this keeps e.g. test-harness entry points out of shipped binaries.
+ifeq ($(SIGN_ID),-)
+DEV_DEFINE_FLAGS := $(foreach d,$(DEV_ONLY_DEFINES),-D $(d))
+else
+DEV_DEFINE_FLAGS :=
+endif
+
 build:
 	@echo "→ build $(PRODUCT_NAME) (swiftc, universal)"
 	@mkdir -p "$(BUILT_BUNDLE)/Contents/MacOS" "$(BUILT_BUNDLE)/Contents/Resources"
 	# Per-arch compile, then lipo. arm64 first, x86_64 second, then merge.
 	for ARCH in $(ARCH_LIST); do
 		swiftc -O -target $$ARCH-apple-macos$(MACOS_TARGET) \
-			$(SWIFTC_OUTPUT_FLAGS) \
+			$(SWIFTC_OUTPUT_FLAGS) $(DEV_DEFINE_FLAGS) \
 			-o "$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)_$$ARCH" \
 			$(SWIFT_ALL_SOURCES) $(JORVIKKIT_SOURCES) \
 			$(FRAMEWORK_FLAGS)
