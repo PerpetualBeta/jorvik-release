@@ -103,8 +103,13 @@ else
 INSTALL_ROOT := /Applications
 endif
 
-# Build Mach-O architecture flags (universal binaries are non-negotiable).
-ARCH_LIST := arm64 x86_64
+# Build Mach-O architecture flags. Universal is the DEFAULT and stays non-negotiable for anything
+# that could plausibly run on an Intel Mac — but `?=` so a target whose requirements genuinely
+# exclude them can say so in its own Makefile and have the build honour it. Citadel is the first:
+# it is a Metal-heavy real-time game tuned to a 16.7 ms budget on Apple silicon, and shipping an
+# x86_64 slice that has never been executed is worse than not shipping one, because the failure
+# mode is a black screen rather than a refusal to launch. Set it BEFORE including this file.
+ARCH_LIST ?= arm64 x86_64
 
 # Platform target. macOS 14 minimum across the suite.
 MACOS_TARGET := 14.0
@@ -502,12 +507,12 @@ build:
 			$(SWIFT_ALL_SOURCES) $(JORVIKKIT_SOURCES) \
 			$(FRAMEWORK_FLAGS)
 	done
-	lipo -create \
-		"$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)_arm64" \
-		"$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)_x86_64" \
+	# Merge whatever ARCH_LIST actually built, rather than naming the two slices: a single-arch
+	# target used to reach here and fail on a missing x86_64 file. `lipo -create` with one input
+	# writes a thin binary, which is exactly right for an Apple-silicon-only target.
+	lipo -create $(foreach A,$(ARCH_LIST),"$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)_$(A)") \
 		-output "$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)"
-	rm -f "$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)_arm64" \
-	      "$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)_x86_64"
+	rm -f $(foreach A,$(ARCH_LIST),"$(BUILT_BUNDLE)/Contents/MacOS/$(BUNDLE_NAME)_$(A)")
 	# Info.plist: project's Info.plist is the source of truth for everything
 	# except CFBundleShortVersionString and CFBundleVersion (which `stamp`
 	# overwrites pre-sign). Path is configurable via INFO_PLIST.
