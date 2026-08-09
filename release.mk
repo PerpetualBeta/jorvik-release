@@ -75,7 +75,24 @@ SIGN_ID ?= -
 INSTALLER_SIGN_ID ?=
 NOTARY_PROFILE ?= JorvikNotary
 VERSION ?= 0.0.0
+
+# `?=` creates a *recursively expanded* variable, so every `$(BUILD_NUMBER)`
+# reference re-runs `date` and can return a different answer. Observed in one
+# JorvikReleaseManager 2.0.36 run: the bundle was stamped 20260809194105 while
+# the closing line reported 20260809194215 — 70 seconds apart.
+#
+# The disagreeing echo is only cosmetic. The defect that matters is in `stamp`,
+# which stamps the main bundle on one line and then each helper bundle on a
+# later one. A multi-target app could therefore ship helpers whose
+# CFBundleVersion differs from the app containing them — and CFBundleVersion is
+# exactly the field Sparkle compares. No app declares HELPER_TARGETS today, so
+# this has never fired; it would have gone off the first time one did.
+#
+# The second line freezes whatever the first resolved to. Overrides still work
+# both ways: a command-line `BUILD_NUMBER=…` beats any makefile assignment, and
+# an environment or RM-exported value is preserved by the `?=` above.
 BUILD_NUMBER ?= $(shell date "+%Y%m%d%H%M%S")
+BUILD_NUMBER := $(BUILD_NUMBER)
 
 # Resolve the helpers directory relative to this file. `lastword MAKEFILE_LIST`
 # is "this file's path" while it's being parsed, even when included.
