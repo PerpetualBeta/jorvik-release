@@ -126,6 +126,7 @@ When `SIGN_ID` is `-` (the default for terminal use), notarisation is skipped �
 | `package` | 6 | Dispatches to `package-zip`/`package-pkg`/both based on settings. |
 | `package-zip` | 6a | Renames bundle to `$(INSTALL_NAME)`, ditto-zips, verifies. |
 | `package-pkg` | 6b | pkgbuild + productsign + notarise + staple the .pkg. |
+| `publish` | 7 | **Headless releases only.** Uploads the artefacts to GitHub *and* creates the local tag. |
 | `clean` | _utility_ | Removes the bundle, zip, pkg, and intermediate artefacts. |
 
 ## What `release.mk` handles automatically
@@ -146,7 +147,7 @@ When `SIGN_ID` is `-` (the default for terminal use), notarisation is skipped �
 - **Preflight** — cert availability, gh auth, notarytool keychain profile validation.
 - **Independent verification** — RM runs `codesign -dvv`, `spctl --assess`, and `stapler validate` against the artefacts after `gmake release` finishes, cross-checked against the catalogue's `expectedEntitlements`.
 - **Sparkle EdDSA appcast signing** — RM runs `sign_update` on the `.zip` and captures the structured signature + size into the appcast generator.
-- **GitHub release upload** — `gh release create`, asset attachment, catalogue write-back of `lastBuiltZipURL` and `currentVersion`.
+- **GitHub release upload** — for RM-driven releases. RM does `gh release create`, asset attachment, the local `git tag`, and catalogue write-back of `lastBuiltZipURL` and `currentVersion`. Headless releases use `publish` (below) instead.
 
 ## Standalone use (without RM)
 
@@ -156,9 +157,29 @@ gmake release VERSION=1.0.1 \
     SIGN_ID="Developer ID Application: Jonthan Hollin (EG86BCGUE7)" \
     INSTALLER_SIGN_ID="Developer ID Installer: Jonthan Hollin (EG86BCGUE7)" \
     NOTARY_PROFILE=JorvikNotary
+gmake publish VERSION=1.0.1 RELEASE_NOTES=notes.md
 ```
 
 Without `SIGN_ID`, the build is ad-hoc-signed and `notarise`/`staple` no-op — useful for local installation testing.
+
+### Always finish a headless release with `publish`
+
+`release` stops at a notarised package on disk. RM normally takes it from there — and since 2026-04-11 RM creates the git tag **locally as well as on GitHub**, so RM-cut releases stay consistent.
+
+A headless release has no such step, and a hand-run `gh release create` tags on GitHub *only*. Nothing fetches tags afterwards, so the local clone falls a tag behind permanently, and Jorvik Dashboard — which reads local tags — reports an already-shipped app as "ready to release". Four repos had drifted this way by 2026-08-09: ASCII Saver, Lookout, QuitProtect and JorvikDashboard.
+
+`publish` does both halves in one command, so the tag cannot be forgotten:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `VERSION` | — | Required. Refuses `0.0.0` or empty. |
+| `GITHUB_REPO` | derived from `origin` | Override only if origin isn't the release remote. |
+| `DISPLAY_NAME` | `INSTALL_NAME` minus `.app`/`.saver` | Used for the release title. |
+| `RELEASE_NOTES` | — | Path to a markdown file. Falls back to `Release <VERSION>`. |
+
+It refuses to publish when HEAD is ahead of `origin/main`, so a release can never name a commit nobody else can fetch, and it uploads whatever the package stage actually produced (`.zip`, `.pkg`, or both).
+
+Note that `publish` does **not** write back to Release Manager's catalogue — `lastBuiltVersion`, `lastBuiltZipURL`, `lastBuiltZipSize` and the `sign_update` signature still need updating by hand after a headless release, or RM and the Dashboard will disagree with reality.
 
 ---
 

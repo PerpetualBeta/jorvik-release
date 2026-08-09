@@ -120,11 +120,76 @@ SDK := $(shell xcrun --sdk macosx --show-sdk-path)
 # contains a space (e.g. "/Users/jonathanhollin/Desktop/Jorvik Software/...").
 # Inside recipes, paths are quoted so the shell handles spaces correctly.
 
-.PHONY: release build stamp sign notarise staple package package-zip package-pkg clean _deregister-staged
+.PHONY: release build stamp sign notarise staple package package-zip package-pkg publish clean _deregister-staged
 
 release: package
 	@$(MAKE) --no-print-directory _deregister-staged
 	@echo "✅ release: $(BUNDLE_NAME) $(VERSION) ($(BUILD_NUMBER))"
+
+# ── publish: the headless counterpart to Release Manager's release stage ──────
+# `release` stops at a signed, notarised, stapled package on disk. Getting that
+# onto GitHub is RM's job — and RM has created the tag locally as well as
+# remotely since 2026-04-11 (JorvikReleaseManager aa199c3), so RM-cut releases
+# stay consistent.
+#
+# A headless release has no such step. Hand-running `gh release create` makes
+# the tag on GitHub ONLY, and the local clone silently falls a tag behind
+# forever, because nothing fetches tags afterwards. Jorvik Dashboard then reads
+# the stale local tag and reports an already-shipped app as "ready to release".
+# Four repos had drifted this way by 2026-08-09 — ASCII Saver, Lookout,
+# QuitProtect and JorvikDashboard itself.
+#
+# So this target does both halves in one command that cannot be half-remembered:
+#
+#   gmake release VERSION=1.0.4 BUILD_NUMBER=... SIGN_ID=... INSTALLER_SIGN_ID=...
+#   gmake publish VERSION=1.0.4 RELEASE_NOTES=notes.md
+#
+# GITHUB_REPO is derived from origin so no project Makefile has to declare it.
+GITHUB_REPO ?= $(shell git remote get-url origin 2>/dev/null | sed -E 's#^(git@github\.com:|https://github\.com/)##; s#\.git$$##')
+DISPLAY_NAME ?= $(shell printf '%s' '$(INSTALL_NAME)' | sed -E 's/\.(app|saver)$$//')
+RELEASE_NOTES ?=
+
+publish:
+	@if [[ "$(VERSION)" == "0.0.0" || -z "$(VERSION)" ]]; then
+		echo "✗ publish needs an explicit VERSION (e.g. VERSION=1.0.4)" >&2; exit 1
+	fi
+	if [[ -z "$(GITHUB_REPO)" ]]; then
+		echo "✗ could not derive GITHUB_REPO from origin — pass GITHUB_REPO=owner/name" >&2; exit 1
+	fi
+	# The release must point at a commit origin already has, or the tag names
+	# something nobody else can fetch.
+	AHEAD=$$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0)
+	if [[ "$$AHEAD" != "0" ]]; then
+		echo "✗ HEAD is $$AHEAD commit(s) ahead of origin/main — push before publishing" >&2; exit 1
+	fi
+	# Collect whatever the package stage actually produced.
+	ASSETS=()
+	for A in "$(ZIP_PATH)" "$(PKG_PATH)"; do
+		[[ -f "$$A" ]] && ASSETS+=("$$A")
+	done
+	if (( $${#ASSETS[@]} == 0 )); then
+		echo "✗ no assets in $(OUT_DIR) — run 'gmake release' first" >&2; exit 1
+	fi
+	echo "→ publish $(DISPLAY_NAME) v$(VERSION) to $(GITHUB_REPO)"
+	NOTES_ARG=(--notes "Release $(VERSION)")
+	if [[ -n "$(RELEASE_NOTES)" ]]; then
+		if [[ ! -f "$(RELEASE_NOTES)" ]]; then
+			echo "✗ RELEASE_NOTES file not found: $(RELEASE_NOTES)" >&2; exit 1
+		fi
+		NOTES_ARG=(--notes-file "$(RELEASE_NOTES)")
+	fi
+	# `< /dev/null` is intentional — see RM's PipelineEngine for the history:
+	# gh can deadlock on a progress-bar pipe buffer during a multi-MB upload
+	# unless stdin proves the run is non-interactive.
+	gh release create "v$(VERSION)" "$${ASSETS[@]}" \
+		--repo "$(GITHUB_REPO)" \
+		--title "$(DISPLAY_NAME) v$(VERSION)" \
+		"$${NOTES_ARG[@]}" \
+		--latest < /dev/null
+	# The half that kept getting forgotten. -f so re-cutting a version that was
+	# deleted and rebuilt moves the local tag rather than failing.
+	git tag -f "v$(VERSION)" HEAD
+	echo "✅ published $(GITHUB_REPO) v$(VERSION) — local tag created"
 
 # Pipeline order: build → stamp (pre-sign) → sign → notarise → staple → package.
 # Make's prerequisite chain enforces order.
