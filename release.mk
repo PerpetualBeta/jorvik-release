@@ -616,7 +616,10 @@ build:
 	#   (a) icon under Resources/ (Reverie, Daily News) — handled above
 	#   (b) icon at project root (MenuTidy and most other public apps)
 	# This handles (b) — copy root-level ICON_FILE if not already in place.
-	if [[ -f "$(ICON_FILE)" && ! -f "$(BUILT_BUNDLE)/Contents/Resources/$(ICON_FILE)" ]]; then
+	# Copy when absent OR when it has changed. "Only if absent" was a real trap:
+	# once any icon was in the bundle, editing the source icon and rebuilding
+	# silently shipped the OLD one, with a clean build log and no warning.
+	if [[ -f "$(ICON_FILE)" ]] && ! cmp -s "$(ICON_FILE)" "$(BUILT_BUNDLE)/Contents/Resources/$(ICON_FILE)"; then
 		cp "$(ICON_FILE)" "$(BUILT_BUNDLE)/Contents/Resources/$(ICON_FILE)"
 	fi
 	# Embed frameworks.
@@ -752,7 +755,10 @@ build:
 		done
 	fi
 	# Project-root icon fallback (see swiftc block for rationale).
-	if [[ -f "$(ICON_FILE)" && ! -f "$(BUILT_BUNDLE)/Contents/Resources/$(ICON_FILE)" ]]; then
+	# Copy when absent OR when it has changed. "Only if absent" was a real trap:
+	# once any icon was in the bundle, editing the source icon and rebuilding
+	# silently shipped the OLD one, with a clean build log and no warning.
+	if [[ -f "$(ICON_FILE)" ]] && ! cmp -s "$(ICON_FILE)" "$(BUILT_BUNDLE)/Contents/Resources/$(ICON_FILE)"; then
 		cp "$(ICON_FILE)" "$(BUILT_BUNDLE)/Contents/Resources/$(ICON_FILE)"
 	fi
 	for FW in $(EMBEDDED_FRAMEWORKS); do
