@@ -36,7 +36,8 @@ SHELL := /bin/bash
 # ── Optional ──────────────────────────────────────────────────────────────────
 # INSTALL_NAME          display name (defaults to PRODUCT_NAME)   e.g. "Jorvik Release Manager.app"
 # PACKAGE_TYPE          zip | pkg                                  default: zip
-# ALSO_SHIP_PKG         true | false                               default: false
+# ALSO_SHIP_PKG         true | false (zip-primary only; pkg-primary
+#                       always ships both)                        default: false
 # EMBEDDED_FRAMEWORKS   space-separated, embedded into bundle      e.g. Sparkle
 # ENTITLEMENTS          path to MAIN bundle's .entitlements file   e.g. Reverie.entitlements
 # ICON_FILE             AppIcon.icns or other                      default: AppIcon.icns
@@ -332,9 +333,37 @@ staple: notarise
 	fi
 
 # `package` is the dispatcher — fans out based on PACKAGE_TYPE and ALSO_SHIP_PKG.
+#
+# The pkg-primary branch ships BOTH assets unconditionally, and there is no
+# ALSO_SHIP_ZIP to forget. For a whole release it emitted a pkg and nothing
+# else, while RM's GUI path (PipelineEngine's .pkg branch) zipped the bundle
+# as well — so the two release paths disagreed about what the same app ships,
+# and only the GUI one was right. This branch existing at all is why the bug
+# survived: nobody reads a branch they are not in.
+#
+# It bit Reverie 1.0.8 (2026-08-27). Its Homebrew cask fetches Reverie.zip and
+# it is the one Jorvik cask without `auto_updates true`, so brew genuinely owns
+# its updates. A pkg-only release would have pointed every Homebrew user at a
+# 404 as soon as the tap's daily refresh regenerated the cask. It was caught by
+# running `ls` on the OUT_DIR, not by anything the pipeline said: `publish`
+# uploads whatever the package stage produced and is silent about what it did
+# not.
+#
+# Unconditional rather than a per-app flag, deliberately. A flag would have to
+# be set correctly in every pkg-primary Makefile, which is the same
+# forget-shaped failure as the bug, and the same one `publish` was created to
+# end (see the publish target's comment). The two paths agreeing by
+# construction is the property worth having; the cost is that a pkg-primary app
+# always carries a zip it might not strictly need, which is a few MB on a
+# release page.
+#
+# Order is pkg then zip on purpose: `package-pkg` stages its own copy under
+# _pkg_staging and leaves the stapled bundle in place, so the zip cut
+# afterwards still carries a valid notarisation ticket.
 package: staple
 ifeq ($(PACKAGE_TYPE),pkg)
 	$(MAKE) package-pkg
+	$(MAKE) package-zip
 else
 	$(MAKE) package-zip
 ifeq ($(ALSO_SHIP_PKG),true)
