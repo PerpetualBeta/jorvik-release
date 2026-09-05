@@ -10,9 +10,9 @@ GNU Make **4.0+** (the macOS-bundled `/usr/bin/make` is 3.81 from 2006 and lacks
 brew install make
 ```
 
-Homebrew installs it as `gmake` to avoid clobbering the system `make`. Invoke as `gmake release …` everywhere; Release Manager invokes `gmake` explicitly.
+Homebrew installs it as `gmake` to avoid clobbering the system `make`. Invoke as `gmake release …` everywhere; Release Manager — Jorvik's internal release GUI, not publicly available — invokes `gmake` explicitly.
 
-This replaces the per-app build/sign/package logic that used to live inside [Release Manager](https://github.com/PerpetualBeta/JorvikReleaseManager)'s Swift `PipelineEngine`. RM now dispatches `gmake release` with a handful of environment variables and re-verifies the resulting artefacts; it no longer re-implements `xcodebuild`, `codesign --deep`, or `pkgbuild` invocations in Swift.
+This replaces the per-app build/sign/package logic that used to live inside Release Manager's Swift `PipelineEngine`. RM now dispatches `gmake release` with a handful of environment variables and re-verifies the resulting artefacts; it no longer re-implements `xcodebuild`, `codesign --deep`, or `pkgbuild` invocations in Swift.
 
 ## Layout
 
